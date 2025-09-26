@@ -1,0 +1,38 @@
+name: Generate Mods Manifest
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'mods/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate manifest
+        run: |
+          # Create an empty manifest file
+          echo '{"files":{}}' > mods_manifest.json
+          # Find all files in the mods folder, calculate their checksums, and add to the manifest
+          find mods -type f -print0 | while IFS= read -r -d '' file; do
+            key="$file"
+            checksum=$(sha256sum "$file" | awk '{ print $1 }')
+            # Use jq to safely add the entry to the JSON file
+            jq --arg key "$key" --arg checksum "$checksum" '.files[$key] = $checksum' mods_manifest.json > tmp.$$.json && mv tmp.$$.json mods_manifest.json
+          done
+
+      - name: Commit and push manifest
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add mods_manifest.json
+          # Commit only if there are actual changes to the manifest
+          git diff --staged --quiet || git commit -m "Automated: Update mods_manifest.json"
+          git push
