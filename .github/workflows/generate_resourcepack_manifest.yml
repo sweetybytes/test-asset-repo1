@@ -1,0 +1,38 @@
+name: Generate Resource Packs Manifest
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'resourcepacks/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate manifest
+        run: |
+          # Create an empty manifest file
+          echo '{"files":{}}' > rp_manifest.json
+          # Find all files in the rp folder, calculate their checksums, and add to the manifest
+          find resourcepacks -type f -print0 | while IFS= read -r -d '' file; do
+            key="$file"
+            checksum=$(sha256sum "$file" | awk '{ print $1 }')
+            # Use jq to safely add the entry to the JSON file
+            jq --arg key "$key" --arg checksum "$checksum" '.files[$key] = $checksum' rp_manifest.json > tmp.$$.json && mv tmp.$$.json rp_manifest.json
+          done
+
+      - name: Commit and push manifest
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add rp_manifest.json
+          # Commit only if there are actual changes to the manifest
+          git diff --staged --quiet || git commit -m "Automated: Update rp_manifest.json"
+          git push
